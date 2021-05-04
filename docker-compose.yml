@@ -1,0 +1,108 @@
+version: "3"
+
+services:
+  namenode:
+    build:
+        context: .
+        dockerfile: namenode/Dockerfile
+    container_name: namenode
+    restart: always
+    ports:
+      - 9870:9870
+      - 9000:9000
+      - "2222:22"
+    volumes:
+      - hadoop_namenode:/hadoop/dfs/name
+    environment:
+      - CLUSTER_NAME=test
+      - CORE_CONF_fs_defaultFS=hdfs://localhost:9000
+    env_file:
+      - ./hadoop.env
+
+  datanode:
+    build:
+        context: .
+        dockerfile: datanode/Dockerfile
+    container_name: datanode
+    restart: always
+    volumes:
+      - hadoop_datanode:/hadoop/dfs/data
+    ports:
+      - 9864:9864
+    environment:
+      SERVICE_PRECONDITION: "namenode:9870"
+      CORE_CONF_fs_defaultFS: "hdfs://namenode:9000"
+    env_file:
+      - ./hadoop.env
+  
+  resourcemanager:
+    build:
+        context: .
+        dockerfile: resourcemanager/Dockerfile
+    container_name: resourcemanager
+    restart: always
+    ports:
+      - 8088:8088
+    environment:
+      SERVICE_PRECONDITION: "namenode:9000 namenode:9870 datanode:9864"
+      CORE_CONF_fs_defaultFS: "hdfs://namenode:9000"
+    env_file:
+      - ./hadoop.env
+
+  nodemanager1:
+    build:
+        context: .
+        dockerfile: nodemanager/Dockerfile
+    container_name: nodemanager
+    restart: always
+    environment:
+      SERVICE_PRECONDITION: "namenode:9000 namenode:9870 datanode:9864 resourcemanager:8088"
+      CORE_CONF_fs_defaultFS: "hdfs://namenode:9000"
+    ports:
+      - 8042:8042
+    env_file:
+      - ./hadoop.env
+  
+  historyserver:
+    build:
+        context: .
+        dockerfile: historyserver/Dockerfile
+    container_name: historyserver
+    restart: always
+    environment:
+      SERVICE_PRECONDITION: "namenode:9000 namenode:9870 datanode:9864 resourcemanager:8088"
+      CORE_CONF_fs_defaultFS: "hdfs://namenode:9000"
+    ports:
+      - 8188:8188
+    volumes:
+      - hadoop_historyserver:/hadoop/yarn/timeline
+    env_file:
+      - ./hadoop.env
+
+  zookeeper:
+    image: wurstmeister/zookeeper
+    ports:
+     - "2181:2181"
+
+  kafka:
+    build:
+        context: .
+        dockerfile: kafka/Dockerfile
+    ports:
+     - "9092:9092"
+    expose:
+     - "9093"
+    environment:
+      KAFKA_ADVERTISED_LISTENERS: INSIDE://kafka:9093,OUTSIDE://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INSIDE:PLAINTEXT,OUTSIDE:PLAINTEXT
+      KAFKA_LISTENERS: INSIDE://0.0.0.0:9093,OUTSIDE://0.0.0.0:9092
+      KAFKA_INTER_BROKER_LISTENER_NAME: INSIDE
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_CREATE_TOPICS: "input_topic:1:1,mapping_topic:1:1"
+    volumes:
+     - /var/run/docker.sock:/var/run/docker.sock
+  
+volumes:
+  hadoop_namenode:
+  hadoop_datanode:
+  hadoop_historyserver:
